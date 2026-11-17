@@ -12,6 +12,7 @@ MCP 客户端管理器
 """
 import asyncio
 import os
+import sys
 from typing import Optional, List
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -41,13 +42,13 @@ class MCPClientManager:
     SERVER_CONFIGS = {
         # ========== 自建服务（stdio） ==========
         "weather": {
-            "command": "python",
+            "command": sys.executable,
             "args": ["-m", "app.mcp_core.servers.weather_server"],
             "transport": "stdio",
             "env": ENV_VARS,
         },
         "search": {
-            "command": "python",
+            "command": sys.executable,
             "args": ["-m", "app.mcp_core.servers.search_server"],
             "transport": "stdio",
             "env": ENV_VARS,
@@ -59,7 +60,8 @@ class MCPClientManager:
             "transport": "http",
         },
         "12306-mcp": {
-            "url": "https://mcp.api-inference.modelscope.net/215d3cfb299e47/mcp",
+            # 本地自部署的 drfccv/mcp-server-12306（Streamable HTTP，端口 8090）
+            "url": "http://127.0.0.1:8090/mcp",
             "transport": "streamable_http",
         },
         "VariFlight-Aviation": {
@@ -67,7 +69,8 @@ class MCPClientManager:
             "transport": "streamable_http",
         },
         "aigohotel-mcp": {
-            "url": "https://mcp.aigohotel.com/mcp",
+            # RollingGo（原 AigoHotel）官方当前标准端点，Bearer 认证
+            "url": "https://mcp.rollinggo.cn/mcp",
             "transport": "streamable_http",
             "headers": {
                 "Authorization": f"Bearer {os.getenv('AIGOHOTEL_MCP_API')}",
@@ -108,16 +111,27 @@ class MCPClientManager:
 
         app_logger.info(f"🔗 初始化 MCP: {list(configs.keys())}")
 
-        # 创建客户端
+        # 创建客户端（保留完整配置，供后续按需使用）
         self._client = MultiServerMCPClient(configs)
 
-        # 预加载工具
-        try:
-            self._tools = await self._client.get_tools()
-            app_logger.info(f"✅ 已加载 {len(self._tools)} 个 MCP 工具")
-        except Exception as e:
-            app_logger.warning(f"⚠️ 预加载工具失败: {e}")
-            self._tools = []
+        # 容错预加载：逐个服务连接，单个服务失败不影响其他服务的工具
+        tools: List = []
+        available: List[str] = []
+        for name in servers:
+            try:
+                single_client = MultiServerMCPClient({name: self.SERVER_CONFIGS[name]})
+                server_tools = await asyncio.wait_for(single_client.get_tools(), timeout=30)
+                tools.extend(server_tools)
+                available.append(name)
+                app_logger.info(f"  ✓ {name}: {len(server_tools)} 个工具")
+            except Exception as e:
+                app_logger.warning(f"  ✗ {name} 不可用，已跳过: {type(e).__name__}: {e}")
+
+        self._tools = tools
+        app_logger.info(
+            f"✅ MCP 就绪：{len(available)}/{len(servers)} 个服务、共 {len(self._tools)} 个工具 "
+            f"(可用: {available})"
+        )
 
     async def close(self):
         """关闭客户端"""

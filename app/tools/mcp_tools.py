@@ -37,8 +37,12 @@ async def get_hotel_tools() -> List[BaseTool]:
     hotel_tools = [
         tool for tool in all_tools
         if any(keyword in tool.name.lower() for keyword in [
-            'find-hotels',           # 酒店搜索
-            'maps_around_search',    # 周边POI搜索（找附近餐厅等）
+            # RollingGo（AigoHotel）真实酒店 MCP 工具
+            'searchhotels',             # 酒店搜索
+            'gethoteldetail',          # 酒店详情/房型/取消政策
+            'gethotelsearchtags',      # 酒店搜索标签
+            'gethotelstaticinfo',      # 酒店静态信息
+            'maps_around_search',      # 高德周边POI搜索（找附近餐厅/设施）
         ])
     ]
 

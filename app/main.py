@@ -1,9 +1,12 @@
 """
 FastAPI 应用入口
 """
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.utils.logger import app_logger
 from app.api.v1 import conversations, chat, users
@@ -69,11 +72,22 @@ app.include_router(conversations.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 
 
-@app.get("/")
-async def root():
+@app.get("/health", include_in_schema=False)
+async def health():
     return {
         "status": "healthy",
         "service": "LangGraph Travel Planner",
         "version": "1.0.0",
         "docs": "/docs"
     }
+
+
+# 静态前端页面
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/static/index.html")
